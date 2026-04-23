@@ -7,15 +7,6 @@ import requests
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="Resto Samuel", layout="wide")
 
-# FUNCIÓN DE IMPRESIÓN CON VISTA PREVIA
-def ejecutar_impresion():
-    st.info("✅ Preparando vista previa... El menú de impresión debería abrirse automáticamente.")
-    st.markdown("""
-        <script>
-            setTimeout(function(){ window.print(); }, 1000);
-        </script>
-    """, unsafe_allow_html=True)
-
 # 2. CONEXIÓN AL EXCEL
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR683Ef1FFMFjMj0NqgygAm6d3siwKrKUtlmG_Xd3n_qv8zO56a2PnG6lBr66sMYxkJ2LOZfTZqoien/pub?output=csv"
 
@@ -44,7 +35,7 @@ if 'mesas' not in st.session_state:
 if 'historial' not in st.session_state:
     st.session_state.historial = []
 
-# 4. INTERFAZ Y NAVEGACIÓN
+# 4. INTERFAZ
 st.sidebar.title("🏨 Menú Principal")
 modo = st.sidebar.radio("Ir a:", ["📍 Mozo", "💰 Caja", "📊 Cierre Z"])
 
@@ -61,27 +52,27 @@ if modo == "📍 Mozo":
     if 'm_act' in st.session_state:
         m = st.session_state.m_act
         st.divider()
-        st.subheader(f"📝 Comanda Mesa {m}")
+        st.subheader(f"📝 Pedido Mesa {m}")
         
         if menu:
             c1, c2 = st.columns([3, 1])
             p_sel = c1.selectbox("Producto:", list(menu.keys()), key=f"s_{m}")
             cant = c2.number_input("Cantidad:", min_value=1, value=1, key=f"n_{m}")
             
-            if st.button("➕ AGREGAR PEDIDO", use_container_width=True):
+            if st.button("➕ AGREGAR AL PEDIDO", use_container_width=True):
                 precio = menu[p_sel]
                 st.session_state.mesas[m].append({"Prod": p_sel, "Cant": cant, "Precio": precio, "Sub": precio*cant})
                 st.rerun()
             
             if st.session_state.mesas[m]:
-                # VISTA PREVIA EN PANTALLA
-                st.write("### 📄 Vista Previa de Comanda:")
-                df_m = pd.DataFrame(st.session_state.mesas[m])
-                st.table(df_m)
-                st.write(f"**Total Mesa:** ${df_m['Sub'].sum():,.2f}")
-                
-                if st.button("🖨️ CONFIRMAR E IMPRIMIR"):
-                    ejecutar_impresion()
+                st.write("---")
+                # TICKET VISUAL PARA MOZA
+                with st.expander("👁️ VER TICKET PARA COCINA (VISTA PREVIA)", expanded=True):
+                    st.markdown(f"### 🎫 COMANDA MESA {m}")
+                    st.write(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+                    df_m = pd.DataFrame(st.session_state.mesas[m])
+                    st.table(df_m[['Cant', 'Prod']])
+                    st.button("🖨️ ENVIAR A IMPRESORA (Ctrl+P)", on_click=lambda: st.markdown("<script>window.print();</script>", unsafe_allow_html=True))
         else:
             st.error("Error cargando el menú del Excel.")
 
@@ -95,41 +86,46 @@ elif modo == "💰 Caja":
         df_c = pd.DataFrame(st.session_state.mesas[m_c])
         total = df_c["Sub"].sum()
         
-        st.write("### 🧾 Detalle de Cuenta:")
+        # VISTA PREVIA DEL COBRO
+        st.info(f"Revisando cuenta de Mesa {m_c}")
         st.table(df_c)
-        st.write(f"## TOTAL A PAGAR: ${total:,.2f}")
+        st.write(f"## TOTAL: ${total:,.2f}")
         
-        metodo = st.radio("Método de Pago:", ["Efectivo", "QR / Transferencia", "Tarjeta"], horizontal=True)
+        metodo = st.radio("Forma de Pago:", ["Efectivo", "QR / Transferencia", "Tarjeta"], horizontal=True)
         
         if metodo == "Efectivo":
             pago = st.number_input("Paga con:", min_value=float(total), step=100.0)
-            st.write(f"### Vuelto: ${pago - total:,.2f}")
+            if pago > total:
+                st.warning(f"### Vuelto: ${pago - total:,.2f}")
         
-        if st.button(f"✅ FINALIZAR Y COBRAR MESA {m_c}", use_container_width=True):
+        if st.button(f"✅ FINALIZAR Y CERRAR MESA {m_c}", use_container_width=True):
             st.session_state.historial.append({
                 "Mesa": m_c, "Total": total, "Método": metodo, "Fecha": datetime.now().strftime("%H:%M")
             })
             st.session_state.mesas[m_c] = []
-            st.success("Cobro realizado correctamente.")
+            st.success("Mesa cerrada. Los datos pasaron al Cierre Z.")
             st.rerun()
     else:
-        st.info("No hay mesas ocupadas.")
+        st.info("No hay mesas abiertas.")
 
 # --- CIERRE Z ---
 elif modo == "📊 Cierre Z":
-    st.header("📊 Cierre de Caja Diario")
+    st.header("📊 Resumen de Caja")
     if st.session_state.historial:
         df_z = pd.DataFrame(st.session_state.historial)
         
-        # VISTA PREVIA DEL CIERRE
-        st.write("### 📋 Resumen Final:")
-        st.metric("RECAUDACIÓN TOTAL", f"${df_z['Total'].sum():,.2f}")
+        # EL RECUADRO QUE BUSCABAS PARA VER SI CERRO BIEN
+        st.markdown("""---""")
+        st.subheader("📋 TICKET DE CIERRE DIARIO")
+        c1, c2 = st.columns(2)
+        c1.metric("TOTAL RECAUDADO", f"${df_z['Total'].sum():,.2f}")
+        c2.write("**Desglose por Pago:**")
+        c2.table(df_z.groupby("Método")["Total"].sum())
+        
+        st.write("**Detalle de Movimientos:**")
         st.dataframe(df_z, use_container_width=True)
         
-        st.write("### 💳 Totales por medio de pago:")
-        st.table(df_z.groupby("Método")["Total"].sum())
-        
-        if st.button("🖨️ IMPRIMIR REPORTE Z"):
-            ejecutar_impresion()
+        if st.button("🖨️ IMPRIMIR ESTE RESUMEN"):
+             st.markdown("<script>window.print();</script>", unsafe_allow_html=True)
     else:
-        st.write("Sin ventas registradas.")
+        st.warning("Todavía no hay ventas para mostrar en el cierre.")
