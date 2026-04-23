@@ -7,7 +7,7 @@ import requests
 # 1. CONFIGURACIÓN
 st.set_page_config(page_title="Resto Samuel - Sistema Final", layout="wide")
 
-# CEREBRO CENTRAL: Comparte datos entre todos los dispositivos
+# CEREBRO CENTRAL (Sincroniza todos los dispositivos)
 @st.cache_resource
 def obtener_base_datos():
     return {
@@ -22,11 +22,10 @@ if 'mesas' not in st.session_state:
 if 'historial' not in st.session_state:
     st.session_state.historial = db["historial"]
 
-# FUNCIÓN DE IMPRESIÓN DIRECTA
 def imprimir():
     st.markdown("<script>window.print();</script>", unsafe_allow_html=True)
 
-# 2. CONEXIÓN AL EXCEL (Sincronización de menú)
+# 2. CONEXIÓN AL EXCEL
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR683Ef1FFMFjMj0NqgygAm6d3siwKrKUtlmG_Xd3n_qv8zO56a2PnG6lBr66sMYxkJ2LOZfTZqoien/pub?output=csv"
 
 @st.cache_data(ttl=1)
@@ -38,8 +37,9 @@ def cargar_menu():
         df.columns = [str(c).strip().lower() for c in df.columns]
         def limpiar_p(v):
             if isinstance(v, str):
-                v = v.replace('$', '').replace(',', '').strip()
-            return float(v)
+                v = str(v).replace('$', '').replace(',', '').strip()
+                return float(v)
+            return 0.0
         return {str(row['producto']).strip(): limpiar_p(row['precio']) for _, row in df.iterrows()}
     except: return None
 
@@ -47,7 +47,7 @@ menu = cargar_menu()
 
 # 3. INTERFAZ
 st.sidebar.title("🏨 RESTO SAMUEL")
-modo = st.sidebar.radio("Menú:", ["📍 MOZOS", "💰 CAJA", "📊 CIERRE Z"])
+modo = st.sidebar.radio("Ir a:", ["📍 MOZOS", "💰 CAJA", "📊 CIERRE Z"])
 
 # --- VISTA MOZOS ---
 if modo == "📍 MOZOS":
@@ -68,21 +68,15 @@ if modo == "📍 MOZOS":
             p_sel = c1.selectbox("Producto:", list(menu.keys()), key=f"p_{m}")
             cant = c2.number_input("Cant:", min_value=1, value=1, key=f"c_{m}")
             if st.button("➕ AGREGAR AL PEDIDO", use_container_width=True):
-                st.session_state.mesas[m].append({
-                    "Prod": p_sel, "Cant": cant, "Precio": menu[p_sel], "Sub": menu[p_sel]*cant
-                })
+                st.session_state.mesas[m].append({"Prod": p_sel, "Cant": cant, "Precio": menu[p_sel], "Sub": menu[p_sel]*cant})
                 st.rerun()
             
-            # --- VISTA PREVIA DEL PEDIDO (Lo que pediste) ---
             if st.session_state.mesas[m]:
-                st.markdown("### 📋 VISTA PREVIA DEL PEDIDO")
+                st.markdown("### 📋 VISTA PREVIA")
                 df_m = pd.DataFrame(st.session_state.mesas[m])
-                st.table(df_m[['Cant', 'Prod']]) # Solo muestra cantidad y nombre
-                st.write(f"**Subtotal acumulado:** ${df_m['Sub'].sum():,.2f}")
-                
+                st.table(df_m[['Cant', 'Prod']])
                 c3, c4 = st.columns(2)
-                if c3.button("🖨️ IMPRIMIR COMANDA", use_container_width=True):
-                    imprimir()
+                if c3.button("🖨️ IMPRIMIR COMANDA", use_container_width=True): imprimir()
                 if c4.button("🗑️ VACIAR MESA", use_container_width=True):
                     st.session_state.mesas[m] = []
                     st.rerun()
@@ -97,8 +91,7 @@ elif modo == "💰 CAJA":
         st.table(df_c)
         total = df_c["Sub"].sum()
         st.write(f"## TOTAL: ${total:,.2f}")
-        
-        metodo = st.radio("Pago:", ["Efectivo", "QR / Transf", "Tarjeta"], horizontal=True)
+        metodo = st.radio("Pago:", ["Efectivo", "QR / Transferencia", "Tarjeta"], horizontal=True)
         if metodo == "Efectivo":
             pago = st.number_input("Paga con:", min_value=float(total), step=100.0)
             st.warning(f"### Vuelto: ${pago - total:,.2f}")
@@ -110,26 +103,41 @@ elif modo == "💰 CAJA":
             st.session_state.mesas[m_c] = []
             st.rerun()
     else:
-        st.info("No hay mesas con consumos.")
+        st.info("No hay mesas ocupadas.")
 
 # --- CIERRE Z ---
 elif modo == "📊 CIERRE Z":
-    st.header("📊 Cierre de Caja")
+    st.header("📊 Cierre de Caja Diario")
     if st.session_state.historial:
         df_z = pd.DataFrame(st.session_state.historial)
-        st.metric("RECAUDACIÓN TOTAL", f"${df_z['Total'].sum():,.2f}")
-        st.write("**Resumen por medio de pago:**")
-        st.table(df_z.groupby("Método")["Total"].sum())
+        total_sistema = df_z['Total'].sum()
         
-        # VISTA PREVIA DEL CIERRE
-        st.write("**Detalle de ventas:**")
-        st.dataframe(df_z, use_container_width=True)
+        # Desglose del sistema
+        efectivo_sistema = df_z[df_z['Método'] == "Efectivo"]['Total'].sum()
+        digital_sistema = df_z[df_z['Método'].isin(["QR / Transferencia", "Tarjeta"])]['Total'].sum()
+
+        st.divider()
+        st.subheader("📝 Arqueo de Caja (Ingreso Manual)")
+        c1, c2 = st.columns(2)
+        efectivo_real = c1.number_input("Total Efectivo en Mano ($):", min_value=0.0, step=100.0)
+        digital_real = c2.number_input("Total Tarjetas / QR / Transf ($):", min_value=0.0, step=100.0)
         
-        if st.button("🖨️ IMPRIMIR REPORTE Z"):
-            imprimir()
+        st.divider()
+        st.subheader("📋 REPORTE FINAL")
+        
+        # Tabla Comparativa
+        comparativa = pd.DataFrame({
+            "Concepto": ["Efectivo", "Digital (QR/Tarj/Transf)", "TOTAL"],
+            "Sistema": [f"${efectivo_sistema:,.2f}", f"${digital_sistema:,.2f}", f"${total_sistema:,.2f}"],
+            "Real (Manual)": [f"${efectivo_real:,.2f}", f"${digital_real:,.2f}", f"${efectivo_real + digital_real:,.2f}"],
+            "Diferencia": [f"${efectivo_real - efectivo_sistema:,.2f}", f"${digital_real - digital_sistema:,.2f}", f"${(efectivo_real + digital_real) - total_sistema:,.2f}"]
+        })
+        st.table(comparativa)
+
+        if st.button("🖨️ IMPRIMIR REPORTE Z"): imprimir()
         
         if st.button("❌ REINICIAR DÍA (Borrar todo)"):
             st.session_state.historial = []
             st.rerun()
     else:
-        st.warning("No hay ventas en el historial.")
+        st.warning("No hay ventas registradas.")
