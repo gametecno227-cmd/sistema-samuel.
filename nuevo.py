@@ -28,7 +28,7 @@ def imprimir():
 # 2. CONEXIÓN AL EXCEL
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR683Ef1FFMFjMj0NqgygAm6d3siwKrKUtlmG_Xd3n_qv8zO56a2PnG6lBr66sMYxkJ2LOZfTZqoien/pub?output=csv"
 
-@st.cache_data(ttl=1)
+@st.cache_data(ttl=0)
 def cargar_menu():
     try:
         response = requests.get(SHEET_URL, timeout=10)
