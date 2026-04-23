@@ -4,11 +4,15 @@ from datetime import datetime
 import io
 import requests
 
-# CONFIGURACIÓN DE PÁGINA
+# 1. CONFIGURACIÓN
 st.set_page_config(page_title="Resto Samuel", layout="wide")
 
-# ENLACE AL EXCEL (CSV)
-SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3ePfVd6ZQquJqSmd_uB515tMaH20P5xeK9rKJUa0YD3bVj4XLpb4L5Hfos-e5YyRwrA3y7PUj-Fbs/pub?output=csv"
+# FUNCIÓN DE IMPRESIÓN (Lanza el menú de impresión del navegador)
+def script_impresion():
+    st.markdown("<script>window.print();</script>", unsafe_allow_html=True)
+
+# 2. CONEXIÓN AL EXCEL
+SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR683Ef1FFMFjMj0NqgygAm6d3siwKrKUtlmG_Xd3n_qv8zO56a2PnG6lBr66sMYxkJ2LOZfTZqoien/pub?output=csv"
 
 @st.cache_data(ttl=5)
 def cargar_menu():
@@ -29,13 +33,13 @@ def cargar_menu():
 
 menu = cargar_menu()
 
-# MEMORIA
+# 3. MEMORIA
 if 'mesas' not in st.session_state:
     st.session_state.mesas = {i: [] for i in range(1, 51)}
 if 'historial' not in st.session_state:
     st.session_state.historial = []
 
-# INTERFAZ
+# 4. INTERFAZ
 st.sidebar.title("🏨 Menú Principal")
 modo = st.sidebar.radio("Ir a:", ["📍 Mozo", "💰 Caja", "📊 Cierre Z"])
 
@@ -58,28 +62,39 @@ if modo == "📍 Mozo":
                 precio = menu[p_sel]
                 st.session_state.mesas[m].append({"Prod": p_sel, "Cant": cant, "Precio": precio, "Sub": precio*cant})
                 st.rerun()
+            
             if st.session_state.mesas[m]:
                 st.table(pd.DataFrame(st.session_state.mesas[m]))
+                # --- BOTÓN DE IMPRESIÓN PARA LA MOZA ---
+                if st.button("🖨️ IMPRIMIR COMANDA"):
+                    script_impresion()
         else:
-            st.error("Error cargando el Excel. Verificá la conexión.")
+            st.error("Error cargando el Excel.")
 
 elif modo == "💰 Caja":
     st.header("💰 Cobros")
     activas = [i for i, v in st.session_state.mesas.items() if v]
     if activas:
         m_c = st.selectbox("Mesa:", activas)
-        total = sum(item['Sub'] for item in st.session_state.mesas[m_c])
+        df_c = pd.DataFrame(st.session_state.mesas[m_c])
+        total = df_c["Sub"].sum()
+        st.table(df_c)
         st.write(f"### TOTAL: ${total:,.2f}")
         pago = st.number_input("Paga con:", min_value=float(total))
         st.write(f"### Vuelto: ${pago - total:,.2f}")
         if st.button(f"Finalizar Mesa {m_c}"):
-            st.session_state.historial.append({"Total": total, "Fecha": datetime.now()})
+            st.session_state.historial.append({"Mesa": m_c, "Total": total, "Fecha": datetime.now().strftime("%H:%M")})
             st.session_state.mesas[m_c] = []
             st.rerun()
 
 elif modo == "📊 Cierre Z":
-    st.header("📊 Cierre")
+    st.header("📊 Cierre de Caja")
     if st.session_state.historial:
         df_z = pd.DataFrame(st.session_state.historial)
-        st.metric("Total Diario", f"${df_z['Total'].sum():,.2f}")
+        st.metric("RECAUDACIÓN TOTAL", f"${df_z['Total'].sum():,.2f}")
         st.table(df_z)
+        # --- BOTÓN DE IMPRESIÓN PARA EL CIERRE Z ---
+        if st.button("🖨️ IMPRIMIR REPORTE Z"):
+            script_impresion()
+    else:
+        st.write("No hay ventas registradas.")
