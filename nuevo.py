@@ -7,11 +7,12 @@ import requests
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="Resto Samuel", layout="wide")
 
-# FUNCIÓN DE IMPRESIÓN MEJORADA
+# FUNCIÓN DE IMPRESIÓN CON VISTA PREVIA
 def ejecutar_impresion():
+    st.info("✅ Preparando vista previa... El menú de impresión debería abrirse automáticamente.")
     st.markdown("""
         <script>
-            window.print();
+            setTimeout(function(){ window.print(); }, 1000);
         </script>
     """, unsafe_allow_html=True)
 
@@ -60,7 +61,8 @@ if modo == "📍 Mozo":
     if 'm_act' in st.session_state:
         m = st.session_state.m_act
         st.divider()
-        st.subheader(f"Mesa {m}")
+        st.subheader(f"📝 Comanda Mesa {m}")
+        
         if menu:
             c1, c2 = st.columns([3, 1])
             p_sel = c1.selectbox("Producto:", list(menu.keys()), key=f"s_{m}")
@@ -72,15 +74,20 @@ if modo == "📍 Mozo":
                 st.rerun()
             
             if st.session_state.mesas[m]:
-                st.table(pd.DataFrame(st.session_state.mesas[m]))
-                if st.button("🖨️ IMPRIMIR COMANDA PARA MOZA"):
+                # VISTA PREVIA EN PANTALLA
+                st.write("### 📄 Vista Previa de Comanda:")
+                df_m = pd.DataFrame(st.session_state.mesas[m])
+                st.table(df_m)
+                st.write(f"**Total Mesa:** ${df_m['Sub'].sum():,.2f}")
+                
+                if st.button("🖨️ CONFIRMAR E IMPRIMIR"):
                     ejecutar_impresion()
         else:
             st.error("Error cargando el menú del Excel.")
 
 # --- VISTA CAJA ---
 elif modo == "💰 Caja":
-    st.header("💰 Cobros y Facturación")
+    st.header("💰 Cobros")
     activas = [i for i, v in st.session_state.mesas.items() if v]
     
     if activas:
@@ -88,11 +95,11 @@ elif modo == "💰 Caja":
         df_c = pd.DataFrame(st.session_state.mesas[m_c])
         total = df_c["Sub"].sum()
         
+        st.write("### 🧾 Detalle de Cuenta:")
         st.table(df_c)
-        st.write(f"## TOTAL: ${total:,.2f}")
+        st.write(f"## TOTAL A PAGAR: ${total:,.2f}")
         
-        # OPCIONES DE PAGO COMPLETAS
-        metodo = st.radio("Método de Pago:", ["Efectivo", "QR / Transferencia", "Tarjeta Débito/Crédito"], horizontal=True)
+        metodo = st.radio("Método de Pago:", ["Efectivo", "QR / Transferencia", "Tarjeta"], horizontal=True)
         
         if metodo == "Efectivo":
             pago = st.number_input("Paga con:", min_value=float(total), step=100.0)
@@ -100,31 +107,29 @@ elif modo == "💰 Caja":
         
         if st.button(f"✅ FINALIZAR Y COBRAR MESA {m_c}", use_container_width=True):
             st.session_state.historial.append({
-                "Mesa": m_c, 
-                "Total": total, 
-                "Método": metodo,
-                "Fecha": datetime.now().strftime("%H:%M")
+                "Mesa": m_c, "Total": total, "Método": metodo, "Fecha": datetime.now().strftime("%H:%M")
             })
             st.session_state.mesas[m_c] = []
-            st.success(f"Mesa {m_c} liberada.")
+            st.success("Cobro realizado correctamente.")
             st.rerun()
     else:
-        st.info("No hay mesas ocupadas en este momento.")
+        st.info("No hay mesas ocupadas.")
 
 # --- CIERRE Z ---
 elif modo == "📊 Cierre Z":
     st.header("📊 Cierre de Caja Diario")
     if st.session_state.historial:
         df_z = pd.DataFrame(st.session_state.historial)
-        st.metric("RECAUDACIÓN TOTAL", f"${df_z['Total'].sum():,.2f}")
         
-        st.write("### Detalle de Ventas:")
+        # VISTA PREVIA DEL CIERRE
+        st.write("### 📋 Resumen Final:")
+        st.metric("RECAUDACIÓN TOTAL", f"${df_z['Total'].sum():,.2f}")
         st.dataframe(df_z, use_container_width=True)
         
-        st.write("### Resumen por Medio de Pago:")
+        st.write("### 💳 Totales por medio de pago:")
         st.table(df_z.groupby("Método")["Total"].sum())
         
-        if st.button("🖨️ IMPRIMIR REPORTE DE CIERRE"):
+        if st.button("🖨️ IMPRIMIR REPORTE Z"):
             ejecutar_impresion()
     else:
-        st.write("No hay ventas registradas todavía.")
+        st.write("Sin ventas registradas.")
