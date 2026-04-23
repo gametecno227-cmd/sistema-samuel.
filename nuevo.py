@@ -2,131 +2,116 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# 1. CONFIGURACIÓN DE PÁGINA E IMPRESIÓN
-st.set_page_config(page_title="Resto Samuel - Sistema Profesional", layout="wide")
+# 1. CONFIGURACIÓN E IMPRESIÓN
+st.set_page_config(page_title="Resto Samuel - Pro", layout="wide")
 
-# Función para disparar la impresión del navegador
 def script_impresion():
     st.markdown("<script>window.print();</script>", unsafe_allow_html=True)
 
-# 2. CONEXIÓN AL EXCEL (URL CSV)
+# 2. CONEXIÓN AL EXCEL
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3ePfVd6ZQquJqSmd_uB515tMaH20P5xeK9rKJUa0YD3bVj4XLpb4L5Hfos-e5YyRwrA3y7PUj-Fbs/pub?output=csv"
 
 @st.cache_data(ttl=30)
 def cargar_menu():
     try:
         df = pd.read_csv(SHEET_URL)
-        # Limpieza de columnas para evitar errores de mayúsculas/minúsculas
         df.columns = [str(c).strip().lower() for c in df.columns]
         return dict(zip(df['producto'], df['precio']))
     except:
-        # Menú de respaldo por si falla la conexión
-        return {"Lomo completo": 8500, "Papas grandes": 7500, "Gaseosa 1L": 1500, "Cerveza": 3500}
+        return {"Lomo completo": 8500, "Papas grandes": 7500, "Gaseosa 1L": 1500}
 
 menu = cargar_menu()
 
-# 3. ESTADO DE SESIÓN (MEMORIA)
+# 3. MEMORIA
 if 'mesas' not in st.session_state:
     st.session_state.mesas = {i: [] for i in range(1, 51)}
-if 'historial_ventas' not in st.session_state:
-    st.session_state.historial_ventas = []
+if 'historial' not in st.session_state:
+    st.session_state.historial = []
 
-# 4. NAVEGACIÓN LATERAL
+# 4. NAVEGACIÓN
 st.sidebar.title("🏨 Menú Principal")
 modo = st.sidebar.radio("Ir a:", ["📍 Vista Mozo", "💰 Vista Caja", "📊 Cierre Z"])
 
-# --- PANTALLA: VISTA MOZO (50 MESAS) ---
+# --- VISTA MOZO (50 MESAS) ---
 if modo == "📍 Vista Mozo":
-    st.header("📍 Control de Mesas")
-    
-    # Dibujamos las 50 mesas en una cuadrícula
+    st.header("📍 Control de Mesas (1-50)")
     cols = st.columns(10)
     for i in range(1, 51):
         with cols[(i-1) % 10]:
-            # Verde si está vacía, Rojo si tiene algo
-            estado = "🔴" if st.session_state.mesas[i] else "🟢"
-            if st.button(f"{estado}\nM{i}", key=f"btn_m{i}"):
-                st.session_state.m_actual = i
+            est = "🔴" if st.session_state.mesas[i] else "🟢"
+            if st.button(f"{est}\nM{i}", key=f"m{i}"):
+                st.session_state.m_act = i
 
-    # Si se selecciona una mesa, mostramos para cargar pedido
-    if 'm_actual' in st.session_state:
-        m = st.session_state.m_actual
+    if 'm_act' in st.session_state:
+        m = st.session_state.m_act
         st.divider()
-        st.subheader(f"📝 Tomando Pedido: Mesa {m}")
-        
+        st.subheader(f"📝 Mesa {m}")
         c1, c2 = st.columns([3, 1])
-        prod_sel = c1.selectbox("Producto:", list(menu.keys()))
-        cant_sel = c2.number_input("Cantidad:", min_value=1, value=1)
-        
-        if st.button("➕ Agregar a la Comanda"):
-            st.session_state.mesas[m].append({
-                "Producto": prod_sel,
-                "Cantidad": cant_sel,
-                "Precio": menu[prod_sel],
-                "Total": menu[prod_sel] * cant_sel
-            })
+        p = c1.selectbox("Producto:", list(menu.keys()))
+        c = c2.number_input("Cant:", min_value=1, value=1)
+        if st.button("➕ Agregar"):
+            st.session_state.mesas[m].append({"Producto": p, "Cant": c, "Precio": menu[p], "Total": menu[p]*c})
             st.rerun()
-
         if st.session_state.mesas[m]:
-            df_m = pd.DataFrame(st.session_state.mesas[m])
-            st.table(df_m)
-            st.write(f"### Subtotal Mesa {m}: ${df_m['Total'].sum():,.2f}")
-            
-            if st.button("🖨️ MANDAR COMANDA A COCINA"):
-                st.success(f"Comanda Mesa {m} enviada. ¡Imprimiendo...!")
-                script_impresion() # Abre diálogo de impresión
+            st.table(pd.DataFrame(st.session_state.mesas[m]))
+            if st.button("🖨️ Imprimir Comanda"): script_impresion()
 
-# --- PANTALLA: VISTA CAJA ---
+# --- VISTA CAJA (CON CÁLCULO DE VUELTO) ---
 elif modo == "💰 Vista Caja":
-    st.header("💰 Facturación y Cobros")
+    st.header("💰 Cobros")
     ocupadas = [i for i, items in st.session_state.mesas.items() if items]
     
     if not ocupadas:
-        st.info("No hay mesas con consumos activos.")
+        st.info("No hay mesas para cobrar.")
     else:
-        m_a_cobrar = st.selectbox("Seleccione mesa para cobrar:", ocupadas)
-        items_caja = st.session_state.mesas[m_a_cobrar]
-        df_caja = pd.DataFrame(items_caja)
-        total_caja = df_caja["Total"].sum()
+        m_c = st.selectbox("Mesa a cobrar:", ocupadas)
+        df_c = pd.DataFrame(st.session_state.mesas[m_c])
+        total = df_c["Total"].sum()
         
-        st.table(df_caja)
-        st.metric("TOTAL A PAGAR", f"${total_caja:,.2f}")
+        st.table(df_c)
+        st.write(f"## TOTAL: ${total:,.2f}")
         
-        metodo = st.radio("Forma de pago:", ["Efectivo", "Tarjeta", "Transferencia / QR"], horizontal=True)
+        metodo = st.radio("Método:", ["Efectivo", "Tarjeta", "Transferencia"], horizontal=True)
         
-        if st.button(f"✅ FINALIZAR COBRO MESA {m_a_cobrar}", use_container_width=True):
-            # Guardamos en el historial para el Cierre Z
-            st.session_state.historial_ventas.append({
+        vuelto = 0.0
+        recibido = total
+        
+        if metodo == "Efectivo":
+            st.divider()
+            recibido = st.number_input("¿Con cuánto paga el cliente?", min_value=float(total), step=100.0)
+            vuelto = recibido - total
+            if vuelto > 0:
+                st.subheader(f"💵 Vuelto a entregar: ${vuelto:,.2f}")
+            elif recibido == total:
+                st.write("Pagó justo.")
+            st.divider()
+
+        if st.button(f"✅ REGISTRAR PAGO MESA {m_c}", use_container_width=True):
+            st.session_state.historial.append({
                 "Hora": datetime.now().strftime("%H:%M"),
-                "Mesa": m_a_cobrar,
-                "Total": total_caja,
-                "Metodo": metodo
+                "Mesa": m_c,
+                "Total": total,
+                "Metodo": metodo,
+                "Recibido": recibido,
+                "Vuelto": vuelto
             })
-            st.session_state.mesas[m_a_cobrar] = [] # Liberamos la mesa
-            st.success("Venta registrada y mesa liberada.")
+            st.session_state.mesas[m_c] = []
+            st.success(f"Cobro Mesa {m_c} realizado.")
             st.balloons()
             st.rerun()
 
-# --- PANTALLA: CIERRE Z ---
+# --- CIERRE Z ---
 elif modo == "📊 Cierre Z":
-    st.header("📊 Resumen de Ventas Diarias")
-    
-    if not st.session_state.historial_ventas:
-        st.warning("No hay ventas realizadas en esta sesión.")
+    st.header("📊 Cierre de Caja")
+    if not st.session_state.historial:
+        st.write("Sin ventas.")
     else:
-        df_z = pd.DataFrame(st.session_state.historial_ventas)
-        st.write("### Detalle de Movimientos")
+        df_z = pd.DataFrame(st.session_state.historial)
         st.dataframe(df_z, use_container_width=True)
+        st.metric("VENTAS TOTALES", f"${df_z['Total'].sum():,.2f}")
         
-        total_general = df_z["Total"].sum()
+        # Resumen de efectivo para el arqueo
+        solo_efectivo = df_z[df_z["Metodo"] == "Efectivo"]["Total"].sum()
+        st.metric("EFECTIVO EN CAJA (Esperado)", f"${solo_efectivo:,.2f}")
         
-        st.divider()
-        c1, c2 = st.columns(2)
-        c1.metric("RECAUDACIÓN TOTAL", f"${total_general:,.2f}")
-        
-        # Desglose rápido por método de pago
-        st.write("### Ventas por Medio de Pago")
-        st.table(df_z.groupby("Metodo")["Total"].sum())
-        
-        if st.button("🖨️ IMPRIMIR REPORTE Z"):
-            script_impresion()
+        if st.button("🖨️ Imprimir Cierre"): script_impresion()
