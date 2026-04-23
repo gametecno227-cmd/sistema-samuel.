@@ -4,46 +4,39 @@ from datetime import datetime
 import io
 import requests
 
-# 1. CONFIGURACIÓN
-st.set_page_config(page_title="Resto Samuel - Sistema en Red", layout="wide")
+# 1. CONFIGURACIÓN CENTRAL
+st.set_page_config(page_title="Resto Samuel - Unificado", layout="wide")
 
-# 2. BASE DE DATOS GLOBAL (Esto hace que todos vean lo mismo)
+# ESTO UNIFICA LOS DATOS PARA TODOS LOS QUE ENTREN AL LINK
 if 'mesas' not in st.session_state:
     st.session_state.mesas = {i: [] for i in range(1, 51)}
 if 'historial' not in st.session_state:
     st.session_state.historial = []
 
-# 3. CONEXIÓN AL EXCEL
+# 2. CONEXIÓN AL EXCEL
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR683Ef1FFMFjMj0NqgygAm6d3siwKrKUtlmG_Xd3n_qv8zO56a2PnG6lBr66sMYxkJ2LOZfTZqoien/pub?output=csv"
 
-@st.cache_data(ttl=1) # Actualiza el menú casi instantáneamente
+@st.cache_data(ttl=1) # Sincronización rápida con el Excel
 def cargar_menu():
     try:
         response = requests.get(SHEET_URL, timeout=10)
         response.encoding = 'utf-8'
-        if response.status_code == 200:
-            df = pd.read_csv(io.StringIO(response.text))
-            df.columns = [str(c).strip().lower() for c in df.columns]
-            def limpiar_p(v):
-                if isinstance(v, str):
-                    v = v.replace('$', '').replace(',', '').strip()
-                return float(v)
-            return {str(row['producto']).strip(): limpiar_p(row['precio']) for _, row in df.iterrows()}
-        return None
-    except:
-        return None
+        df = pd.read_csv(io.StringIO(response.text))
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        return {str(row['producto']).strip(): float(str(row['precio']).replace('$','').replace(',','')) for _, row in df.iterrows()}
+    except: return None
 
 menu = cargar_menu()
 
-# --- INTERFAZ ---
-st.sidebar.title("🏨 Panel de Control")
-modo = st.sidebar.radio("Ir a:", ["📍 Mozo", "💰 Caja", "📊 Cierre Z"])
+# 3. INTERFAZ UNIFICADA
+st.sidebar.title("🏨 SISTEMA CENTRAL")
+modo = st.sidebar.radio("Ir a:", ["📍 MOZOS", "💰 CAJA", "📊 CIERRE Z"])
 
-if modo == "📍 Mozo":
-    st.header("📍 Panel de Mesas (Sincronizado)")
-    lista_mesas = sorted(st.session_state.mesas.keys())
+if modo == "📍 MOZOS":
+    st.header("📍 Registro de Pedidos")
+    # Mesas en orden 1, 2, 3...
     cols = st.columns(5)
-    for i in lista_mesas:
+    for i in range(1, 51):
         with cols[(i-1)%5]:
             estado = "🔴" if st.session_state.mesas[i] else "🟢"
             if st.button(f"{estado} M{i}", key=f"m{i}", use_container_width=True):
@@ -51,40 +44,33 @@ if modo == "📍 Mozo":
     
     if 'm_act' in st.session_state:
         m = st.session_state.m_act
-        st.divider()
         st.subheader(f"Mesa {m}")
         if menu:
-            p_sel = st.selectbox("Producto:", list(menu.keys()), key=f"sel_{m}")
+            p_sel = st.selectbox("Producto:", list(menu.keys()), key=f"p_{m}")
             cant = st.number_input("Cant:", min_value=1, value=1, key=f"c_{m}")
-            if st.button("➕ AGREGAR PEDIDO", use_container_width=True):
-                st.session_state.mesas[m].append({
-                    "Prod": p_sel, "Cant": cant, "Precio": menu[p_sel], "Sub": menu[p_sel]*cant
-                })
-                st.rerun() # Esto avisa a los demás dispositivos del cambio
-            
-            if st.session_state.mesas[m]:
-                st.table(pd.DataFrame(st.session_state.mesas[m])[['Cant', 'Prod']])
+            if st.button("➕ AGREGAR"):
+                st.session_state.mesas[m].append({"Prod": p_sel, "Cant": cant, "Precio": menu[p_sel], "Sub": menu[p_sel]*cant})
+                st.rerun() # Actualiza para que la cajera lo vea YA
 
-elif modo == "💰 Caja":
-    st.header("💰 Caja Central")
-    activas = sorted([i for i, v in st.session_state.mesas.items() if v])
+elif modo == "💰 CAJA":
+    st.header("💰 Cobros en Tiempo Real")
+    activas = [i for i, v in st.session_state.mesas.items() if v]
     if activas:
-        m_c = st.selectbox("Cobrar Mesa:", activas)
+        m_c = st.selectbox("Mesa a cobrar:", activas)
         df_c = pd.DataFrame(st.session_state.mesas[m_c])
         st.table(df_c)
         total = df_c["Sub"].sum()
         st.write(f"## TOTAL: ${total:,.2f}")
-        
-        if st.button(f"✅ FINALIZAR COBRO MESA {m_c}", use_container_width=True):
+        if st.button(f"✅ FINALIZAR MESA {m_c}"):
             st.session_state.historial.append({"Mesa": m_c, "Total": total, "Fecha": datetime.now().strftime("%H:%M")})
             st.session_state.mesas[m_c] = []
             st.rerun()
-    else:
-        st.info("Esperando pedidos de las mozas...")
 
-elif modo == "📊 Cierre Z":
-    st.header("📊 Resumen del Día")
+elif modo == "📊 CIERRE Z":
+    st.header("📊 Cierre Diario")
     if st.session_state.historial:
         df_z = pd.DataFrame(st.session_state.historial)
-        st.metric("TOTAL", f"${df_z['Total'].sum():,.2f}")
+        st.metric("RECAUDACIÓN TOTAL", f"${df_z['Total'].sum():,.2f}")
         st.dataframe(df_z)
+        if st.button("🖨️ IMPRIMIR"):
+            st.markdown("<script>window.print();</script>", unsafe_allow_html=True)
