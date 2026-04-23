@@ -5,7 +5,7 @@ from datetime import datetime
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="Resto Samuel - Sistema Profesional", layout="wide")
 
-# 2. CONEXIÓN A TU GOOGLE SHEETS (Link CSV)
+# 2. CONEXIÓN A TU GOOGLE SHEETS (Enlace CSV)
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3ePfVd6ZQquJqSmd_uB515tMaH20P5xeK9rKJUa0YD3bVj4XLpb4L5Hfos-e5YyRwrA3y7PUj-Fbs/pub?output=csv"
 
 @st.cache_data(ttl=60) # Actualiza los precios del Excel cada 60 segundos
@@ -54,7 +54,6 @@ if modo == "📍 Vista Mozo (Pedidos)":
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            # Aquí aparecen los productos que tenés en tu Google Sheets
             prod = st.selectbox("Seleccionar Producto (Desde Excel)", list(menu_real.keys()))
         with col2:
             cant = st.number_input("Cantidad", min_value=1, value=1)
